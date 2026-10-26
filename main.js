@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import http from 'node:http';
 import fs from 'node:fs';
 
 const program = new Command();
@@ -27,8 +28,55 @@ if (!Number.isInteger(port) || port < 0 || port > 65535) {
   fatal('Порт має бути цілим числом від 0 до 65535');
 }
 
-// Перевірка існування вхідного файлу (колбек-API)
+function reply(res, status, payload) {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify(payload));
+}
+
+function handleRequest(req, res) {
+  const url = new URL(req.url, 'http://localhost');
+
+  if (url.pathname !== '/') {
+    reply(res, 404, { error: 'Маршрут не знайдено' });
+    return;
+  }
+
+  fs.readFile(options.input, 'utf8', (err, text) => {
+    if (err) {
+      reply(res, 500, { error: 'Не вдалося прочитати файл даних' });
+      return;
+    }
+    let records;
+    try {
+      records = JSON.parse(text);
+    } catch (e) {
+      reply(res, 500, { error: 'Файл даних пошкоджено: некоректний JSON' });
+      return;
+    }
+    if (!Array.isArray(records)) {
+      reply(res, 500, { error: 'Файл даних має містити JSON-масив' });
+      return;
+    }
+    reply(res, 200, records);
+  });
+}
+
+const server = http.createServer((req, res) => {
+  try {
+    handleRequest(req, res);
+  } catch (e) {
+    reply(res, 500, { error: 'Внутрішня помилка сервера' });
+  }
+});
+
+server.on('error', (err) => {
+  fatal(`Не вдалося запустити сервер: ${err.message}`);
+});
+
+// Перевірка існування вхідного файлу (колбек-API); лише потім запуск сервера
 fs.access(options.input, (err) => {
   if (err) fatal('Cannot find input file');
-  console.log(`Параметри прийнято: ${options.host}:${port}, файл ${options.input}`);
+  server.listen(port, options.host, () => {
+    console.log(`Сервер запущено: http://${options.host}:${port}/`);
+  });
 });
