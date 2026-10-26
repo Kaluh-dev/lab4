@@ -28,9 +28,35 @@ if (!Number.isInteger(port) || port < 0 || port > 65535) {
   fatal('Порт має бути цілим числом від 0 до 65535');
 }
 
+// Перетворює значення з файлу на число; усе, що числом не є, дає null
+function toNumber(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
 function reply(res, status, payload) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(payload));
+}
+
+function buildResult(records, showHumidity, minRainfall) {
+  const result = [];
+  for (const record of records) {
+    const rainfall = toNumber(record.Rainfall);
+    // Фільтр увімкнено: запис без числового Rainfall не можна порівняти, тому його пропускаємо
+    if (minRainfall !== null && !(rainfall !== null && rainfall > minRainfall)) continue;
+    const item = {
+      rainfall,
+      pressure3pm: toNumber(record.Pressure3pm),
+    };
+    if (showHumidity) item.humidity = toNumber(record.Humidity3pm);
+    result.push(item);
+  }
+  return result;
 }
 
 function handleRequest(req, res) {
@@ -39,6 +65,18 @@ function handleRequest(req, res) {
   if (url.pathname !== '/') {
     reply(res, 404, { error: 'Маршрут не знайдено' });
     return;
+  }
+
+  const showHumidity = url.searchParams.get('humidity') === 'true';
+
+  let minRainfall = null;
+  const rawMin = url.searchParams.get('min_rainfall');
+  if (rawMin !== null) {
+    minRainfall = toNumber(rawMin);
+    if (minRainfall === null) {
+      reply(res, 400, { error: 'Параметр min_rainfall має бути числом' });
+      return;
+    }
   }
 
   fs.readFile(options.input, 'utf8', (err, text) => {
@@ -57,7 +95,7 @@ function handleRequest(req, res) {
       reply(res, 500, { error: 'Файл даних має містити JSON-масив' });
       return;
     }
-    reply(res, 200, records);
+    reply(res, 200, buildResult(records, showHumidity, minRainfall));
   });
 }
 
