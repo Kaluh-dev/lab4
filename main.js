@@ -38,9 +38,24 @@ function toNumber(value) {
   return null;
 }
 
+// Надсилає відповідь; якщо задано --output, спершу записує її у файл
 function reply(res, status, payload) {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
-  res.end(JSON.stringify(payload));
+  const body = JSON.stringify(payload);
+  const send = (code, text) => {
+    res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(text);
+  };
+  if (!options.output) {
+    send(status, body);
+    return;
+  }
+  fs.writeFile(options.output, body, (err) => {
+    if (err) {
+      send(500, JSON.stringify({ error: 'Не вдалося записати файл відповіді' }));
+      return;
+    }
+    send(status, body);
+  });
 }
 
 function buildResult(records, showHumidity, minRainfall) {
